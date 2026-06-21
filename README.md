@@ -273,8 +273,9 @@ Update metadata fields on items (title, abstract, date, DOI, creators, etc.).
 - `itemKey` (required), `fields`, `creators`
 
 #### `write_item`
-Create new items or reparent existing attachments.
-- `action` (required: create/reparent), `itemType`, `fields`, `creators`, `tags`, `attachmentKeys`, `parentKey`
+Create new items, reparent existing attachments, or import local files as attachments. The `create` action can also import downloaded PDFs/files and add the new item to collections in one call.
+- `action` (required: create/reparent/import), `itemType`, `fields`, `creators`, `tags`, `attachmentKeys`, `filePath`, `filePaths`, `collectionKeys`, `parentKey`, `parentItemKey`, `title`
+- Example create-and-attach workflow: pass `action: "create"`, bibliographic metadata in `fields`/`creators`, `filePath` or `filePaths` with absolute local paths, and optional `collectionKeys`.
 
 ---
 

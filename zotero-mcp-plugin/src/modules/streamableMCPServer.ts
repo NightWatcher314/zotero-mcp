@@ -1011,7 +1011,7 @@ export class StreamableMCPServer {
             action: {
               type: 'string',
               enum: ['create', 'reparent', 'import'],
-              description: 'create: create a new item with metadata. reparent: move an attachment under a different parent item. import: import a local file (e.g., Markdown, PDF) as an attachment to an existing item.'
+              description: 'create: create a new item with metadata and optionally import local files as child attachments. reparent: move an attachment under a different parent item. import: import a local file (e.g., Markdown, PDF) as an attachment to an existing item.'
             },
             itemType: {
               type: 'string',
@@ -1046,13 +1046,23 @@ export class StreamableMCPServer {
               items: { type: 'string' },
               description: 'For create: existing standalone attachment keys to re-parent under the new item. For reparent: attachment keys to move.'
             },
+            filePaths: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'For create action: absolute local file paths to import as child attachments under the newly-created item.'
+            },
+            collectionKeys: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'For create action: collection keys to add the newly-created item to.'
+            },
             parentKey: {
               type: 'string',
               description: 'For reparent action: the target parent item key to move attachments to'
             },
             filePath: {
               type: 'string',
-              description: 'For import action: absolute path to the file to import as an attachment'
+              description: 'For import action, or create action with a single attachment: absolute path to the file to import as an attachment'
             },
             parentItemKey: {
               type: 'string',
@@ -2332,13 +2342,31 @@ export class StreamableMCPServer {
    * Handle write_item tool calls: create items, reparent attachments, and import files
    */
   private async callWriteItem(args: any): Promise<any> {
-    const { action, itemType, fields, creators, tags, attachmentKeys, parentKey, filePath, parentItemKey, title, libraryID = Zotero.Libraries.userLibraryID } = args;
+    const { action, itemType, fields, creators, tags, attachmentKeys, parentKey, filePath, filePaths, collectionKeys, parentItemKey, title, libraryID = Zotero.Libraries.userLibraryID } = args;
 
     try {
       switch (action) {
         case 'create': {
           if (!itemType) {
             throw new Error('itemType is required for create action (e.g., journalArticle, book, conferencePaper)');
+          }
+
+          const normalizedFilePaths = this.coerceStringArray(filePaths) || (filePath ? [String(filePath)] : []);
+          for (const path of normalizedFilePaths) {
+            if (!(await IOUtils.exists(path))) {
+              throw new Error(`File not found: ${path}`);
+            }
+          }
+
+          const normalizedCollectionKeys = this.coerceStringArray(collectionKeys) || [];
+          for (const collectionKey of normalizedCollectionKeys) {
+            const collection = await Zotero.Collections.getByLibraryAndKeyAsync(
+              libraryID,
+              collectionKey
+            );
+            if (!collection) {
+              throw new Error(`Collection not found in library ${libraryID}: ${collectionKey}`);
+            }
           }
 
           // Create new item
@@ -2381,10 +2409,24 @@ export class StreamableMCPServer {
 
           ztoolkit.log(`[StreamableMCP] Created item ${item.key} (type: ${itemType})`);
 
+          // Add to collections if requested
+          const collectionAddResults: any[] = [];
+          if (normalizedCollectionKeys.length > 0) {
+            for (const collectionKey of normalizedCollectionKeys) {
+              const addResult = await this.callAddItemsToCollection({
+                libraryID,
+                collectionKey,
+                itemKeys: [item.key],
+              });
+              collectionAddResults.push(addResult);
+            }
+          }
+
           // Re-parent attachments if provided
           const reparentedAttachments: string[] = [];
-          if (attachmentKeys && Array.isArray(attachmentKeys)) {
-            for (const attKey of attachmentKeys) {
+          const normalizedAttachmentKeys = this.coerceStringArray(attachmentKeys);
+          if (normalizedAttachmentKeys && normalizedAttachmentKeys.length > 0) {
+            for (const attKey of normalizedAttachmentKeys) {
               const attachment = await Zotero.Items.getByLibraryAndKeyAsync(
                 libraryID, attKey
               );
@@ -2403,6 +2445,25 @@ export class StreamableMCPServer {
             }
           }
 
+          // Import local files as child attachments if requested. This lets an
+          // AI workflow create metadata and attach a downloaded PDF in one call.
+          const importedAttachments: Array<{ key: string; path: string; title: string }> = [];
+          for (const path of normalizedFilePaths) {
+            const attachment = await Zotero.Attachments.importFromFile({
+              file: path,
+              parentItemID: item.id,
+              title: normalizedFilePaths.length === 1 && title
+                ? title
+                : path.split(/[\\/]/).pop() || 'Imported Attachment'
+            });
+            importedAttachments.push({
+              key: attachment.key,
+              path,
+              title: attachment.getField('title')
+            });
+            ztoolkit.log(`[StreamableMCP] Imported file as attachment ${attachment.key} under ${item.key}`);
+          }
+
           return {
             action: 'create',
             success: true,
@@ -2413,11 +2474,13 @@ export class StreamableMCPServer {
               creatorsCount: creators?.length || 0,
               tagsCount: tags?.length || 0,
               reparentedAttachments,
+              importedAttachments,
+              collectionAddResults,
               dateCreated: item.dateAdded
             },
             metadata: {
               extractedAt: new Date().toISOString(),
-              message: `Item created (key: ${item.key}, type: ${itemType})${reparentedAttachments.length > 0 ? `, ${reparentedAttachments.length} attachment(s) attached` : ''}`
+              message: `Item created (key: ${item.key}, type: ${itemType})${reparentedAttachments.length + importedAttachments.length > 0 ? `, ${reparentedAttachments.length + importedAttachments.length} attachment(s) attached` : ''}`
             }
           };
         }
