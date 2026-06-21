@@ -2,11 +2,11 @@
 
 Zotero MCP 是一个开源项目，旨在通过模型上下文协议（Model Context Protocol, MCP）将强大的 AI 功能与领先的文献管理工具 Zotero 无缝集成，为 AI 助手（如 Claude）提供与您本地 Zotero 文献库交互的能力。
 _This README is also available in: [:gb: English](./README.md) | :cn: 简体中文._
-[![GitHub](https://img.shields.io/badge/GitHub-zotero--mcp-blue?logo=github)](https://github.com/cookjohn/zotero-mcp)
+[![GitHub](https://img.shields.io/badge/GitHub-zotero--mcp-blue?logo=github)](https://github.com/NightWatcher314/zotero-mcp)
 [![zotero target version](https://img.shields.io/badge/Zotero-7-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue)](https://www.typescriptlang.org)
-[![Version](https://img.shields.io/badge/Version-1.5.0-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-1.5.1-brightgreen)]()
 [![EN doc](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 [![中文文档](https://img.shields.io/badge/文档-中文-blue.svg)](README-zh.md)
 
@@ -60,7 +60,7 @@ AI 客户端 ↔ Streamable HTTP ↔ Zotero 插件（集成 MCP 服务器）
 **两步快速开始：**
 
 1.  **安装插件**：
-    *   前往项目的 [Releases 页面](https://github.com/cookjohn/zotero-mcp/releases) 下载最新的 `zotero-mcp-plugin-x.x.x.xpi` 文件。
+    *   前往项目的 [Releases 页面](https://github.com/NightWatcher314/zotero-mcp/releases) 下载最新的 `zotero-mcp-plugin-x.x.x.xpi` 文件。
     *   在 Zotero 中，通过 `工具 -> 附加组件` 安装该 `.xpi` 文件。
     *   重启 Zotero。
 
@@ -142,7 +142,7 @@ AI 客户端 ↔ Streamable HTTP ↔ Zotero 插件（集成 MCP 服务器）
 *   **`Error: connect ECONNREFUSED 127.0.0.1:23119`**: 表示 MCP 服务器无法连接到 Zotero 插件。请执行上述排查指南的第 1 步和第 3 步。
 *   **JSON 格式错误**: 在手动编辑配置文件时，请确保您的 JSON 语法正确，没有遗漏逗号或括号。
 
-如果以上步骤均无法解决问题，请前往 [GitHub Issues](https://github.com/cookjohn/zotero-mcp/issues) 页面，并附上您的操作系统、客户端版本和相关的日志信息，以便我们更好地帮助您。
+如果以上步骤均无法解决问题，请前往 [GitHub Issues](https://github.com/NightWatcher314/zotero-mcp/issues) 页面，并附上您的操作系统、客户端版本和相关的日志信息，以便我们更好地帮助您。
 
 ---
 
@@ -194,7 +194,7 @@ AI 客户端 ↔ Streamable HTTP ↔ Zotero 插件（集成 MCP 服务器）
 
 ### 步骤 1: 安装和配置 Zotero 插件
 
-1. 前往项目的 [Releases 页面](https://github.com/cookjohn/zotero-mcp/releases) 下载最新的 `zotero-mcp-plugin-x.x.x.xpi` 文件
+1. 前往项目的 [Releases 页面](https://github.com/NightWatcher314/zotero-mcp/releases) 下载最新的 `zotero-mcp-plugin-x.x.x.xpi` 文件
 2. 在 Zotero 中，通过 `工具 -> 附加组件` 安装该 `.xpi` 文件
 3. 在 Zotero 的 `首选项 -> Zotero MCP Plugin` 标签页中，配置服务器设置：
    - **启用服务器**：启动集成的 MCP 服务器
@@ -207,7 +207,7 @@ AI 客户端 ↔ Streamable HTTP ↔ Zotero 插件（集成 MCP 服务器）
 
 1. 克隆本仓库到本地：
    ```bash
-   git clone https://github.com/cookjohn/zotero-mcp.git
+   git clone https://github.com/NightWatcher314/zotero-mcp.git
    cd zotero-mcp
    ```
 
@@ -523,4 +523,3 @@ MCP 服务器已集成在插件内，位于 `src/modules/streamableMCPServer.ts`
 - [Zotero](https://www.zotero.org/) - 优秀的开源文献管理工具。
 - [Model Context Protocol](https://modelcontextprotocol.org/) - 实现 AI 工具集成的协议。
 - [![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
-

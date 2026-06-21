@@ -1,7 +1,7 @@
 {
   "name": "zotero-mcp-plugin",
   "type": "module",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Zotero MCP Plugin",
   "config": {
     "addonName": "Zotero MCP Plugin",
@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cookjohn/zotero-mcp.git"
+    "url": "git+https://github.com/NightWatcher314/zotero-mcp.git"
   },
   "author": "cookjohn",
   "bugs": {
-    "url": "https://github.com/cookjohn/zotero-mcp/issues"
+    "url": "https://github.com/NightWatcher314/zotero-mcp/issues"
   },
-  "homepage": "https://github.com/cookjohn/zotero-mcp#readme",
+  "homepage": "https://github.com/NightWatcher314/zotero-mcp#readme",
   "license": "MIT",
   "scripts": {
     "start": "zotero-plugin serve",
