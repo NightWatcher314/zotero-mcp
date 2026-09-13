@@ -57,12 +57,15 @@ The update manifest follows Zotero's update format:
 npm version patch  # or minor/major
 ```
 
-### 2. GitHub Actions Release
-The GitHub Actions workflow automatically:
-- Builds the plugin
-- Generates `update.json` with correct version and download links
-- Creates a GitHub release with assets
-- Uploads both `.xpi` and `update.json` files
+### 2. Maintained Fork Release
+This fork currently publishes releases manually; it has no GitHub Actions release workflow.
+From `zotero-mcp-plugin/`, run `npm run test:unit`, `npm run prepare-release`, and
+`npm run build`. Commit and push the source and version tag, then publish the
+versioned XPI and `update.json` to `NightWatcher314/zotero-mcp`.
+
+Verify that the XPI manifest, package version, update link, and supported Zotero
+version range agree. Do not publish `update-beta.json` unless its referenced beta
+XPI also exists. Compare downloaded release asset hashes with the built files.
 
 ### 3. Update URL Resolution
 - Plugin checks: `https://github.com/NightWatcher314/zotero-mcp/releases/latest/download/update.json`
@@ -126,6 +129,17 @@ Should return the latest version information.
    ```
 
 ## 📝 Update Check Frequency
+
+### Stale version after manually replacing an XPI
+
+Prefer installation through Zotero's Add-ons Manager. If a manually replaced XPI
+runs new code but the manager still reports the old version, close Zotero normally
+and verify that its process has exited. Back up the profile's `addonStartup.json.lz4`
+before moving it aside, then relaunch Zotero with `--purgecaches`. Do not edit
+`extensions.json` to manufacture a version change. Check the installed XPI hash,
+the manager's active version, and a live plugin operation independently.
+
+The MCP status endpoint's server version is not the installed XPI version.
 
 Zotero checks for add-on updates:
 - Every 24 hours by default
