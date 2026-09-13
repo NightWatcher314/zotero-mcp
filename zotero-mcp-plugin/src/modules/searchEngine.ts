@@ -840,16 +840,21 @@ export async function handleSearchRequest(
       }
       const paginatedIDs = initialItemIDs.slice(offset, offset + limit);
       items = await Zotero.Items.getAsync(paginatedIDs);
+      await Zotero.Items.loadDataTypes(items);
     } else {
       // 其他排序字段需要加载 items，但限制上限
       const cappedIDs = initialItemIDs.slice(0, Math.min(initialItemIDs.length, 2000));
       items = await Zotero.Items.getAsync(cappedIDs);
+      // #105: 未在本会话中打开过的文库（feed/群组）需要显式加载条目数据，
+      // 否则 getField() 会抛 UnloadedDataException
+      await Zotero.Items.loadDataTypes(items);
       // 使用预计算排序键（Schwartzian transform）
       items = await sortItemsWithYield(items, sort, direction);
     }
   } else {
     // --- 慢路径：需要内存过滤，加载全部 ---
     items = await Zotero.Items.getAsync(initialItemIDs);
+    await Zotero.Items.loadDataTypes(items);
 
     // 标签过滤（改为 for 循环 + yield）
     if (queryTags.length > 0) {

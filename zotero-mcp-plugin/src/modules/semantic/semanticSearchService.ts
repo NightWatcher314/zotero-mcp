@@ -412,11 +412,34 @@ export class SemanticSearchService {
       const totalLibraryItems = items.length;
       ztoolkit.log(`[SemanticSearch] Library items fetched: ${totalLibraryItems}`);
 
-      // Filter already indexed items (unless rebuild)
+      // Filter already indexed items (unless rebuild). #100: an item that
+      // was indexed before its PDF arrived must be re-selected, so compare
+      // stored change-detection timestamps instead of bare membership.
       if (!rebuild) {
-        const indexedItems = await this.vectorStore.getIndexedItems();
-        const indexedCount = indexedItems.size;
-        items = items.filter(item => !indexedItems.has(item.key));
+        const statusMap = await this.vectorStore.getIndexStatusMap();
+        const indexedCount = statusMap.size;
+        const toIndex: any[] = [];
+        for (const item of items) {
+          const st = statusMap.get(item.key);
+          if (!st) { toIndex.push(item); continue; }
+          // Known-failed items stay excluded until Retry Failed clears them
+          if (st.contentHash && st.contentHash.startsWith('failed:')) continue;
+          const current = await this.getItemTimestamps(item);
+          // NULL and '' both mean "no attachment seen at index time" — do
+          // NOT reuse needsReindexByTimestamp here, its !attachmentModified
+          // rule would re-select every attachment-less item forever
+          if ((st.itemModified || '') !== current.itemModified ||
+              (st.attachmentModified || '') !== current.attachmentModified) {
+            // Invalidate the cached content: it predates the change (e.g.
+            // abstract-only, cached before the PDF existed) and its hash
+            // matches the stored index hash, so the cached-content
+            // short-circuit in indexItemWithProcessor would otherwise just
+            // refresh timestamps and never re-extract
+            await this.vectorStore.deleteCachedContent(item.key);
+            toIndex.push(item);
+          }
+        }
+        items = toIndex;
         ztoolkit.log(`[SemanticSearch] Items: library=${totalLibraryItems}, indexed=${indexedCount}, toIndex=${items.length}`);
       } else {
         // For rebuild: clear all existing index data first
@@ -701,7 +724,23 @@ export class SemanticSearchService {
     }
 
     // Extract content (PDF extraction happens here)
-    content = await this.extractItemContent(item, sharedProcessor);
+    const extraction = await this.extractItemContent(item, sharedProcessor);
+    content = extraction.content;
+    if (extraction.pdfExtractionFailed) {
+      // PDF extraction failed: do NOT record the title+abstract remnant as a
+      // successful index. Persist a 'failed:extraction' marker (same pattern as
+      // embedding failures at recordFailedItem) so the column UI excludes it
+      // and the Retry Failed button picks it up.
+      this._failedItems.set(item.key, {
+        error: `PDF extraction failed: ${extraction.pdfError}`,
+        errorType: 'extraction' as any,
+        timestamp: Date.now()
+      });
+      this.indexProgress.failedCount = this._failedItems.size;
+      await this.vectorStore.updateIndexStatus(item.key, 0, 'failed:extraction', itemModified, attachmentModified);
+      ztoolkit.log(`[SemanticSearch] indexItem() PDF extraction failed for ${item.key}, marked failed:extraction`, 'warn');
+      return;
+    }
     if (!content.trim()) {
       // Mark item in index_status even with no content, to prevent repeated rebuild attempts
       await this.vectorStore.updateIndexStatus(item.key, 0, 'empty', itemModified, attachmentModified);
@@ -745,7 +784,12 @@ export class SemanticSearchService {
     // Chunk the content
     const chunks = this.textChunker.chunk(content);
     if (chunks.length === 0) {
-      ztoolkit.log(`[SemanticSearch] indexItem() skip: no chunks generated`);
+      // deleteItemVectors() above removed this item's index_status row; without
+      // re-writing one the item counts as "never indexed" and every subsequent
+      // buildIndex re-extracts it (infinite rescan loop, see #104 problem 2).
+      // contentHash was computed above, so later content changes still reindex.
+      await this.vectorStore.updateIndexStatus(item.key, 0, contentHash, itemModified, attachmentModified);
+      ztoolkit.log(`[SemanticSearch] indexItem() no chunks generated for ${item.key}, wrote chunk_count=0 sentinel`);
       return;
     }
     ztoolkit.log(`[SemanticSearch] indexItem() chunked into ${chunks.length} chunks`);
@@ -1087,8 +1131,10 @@ export class SemanticSearchService {
    * @param item The Zotero item
    * @param sharedProcessor Optional shared PDFProcessor for better performance
    */
-  private async extractItemContent(item: any, sharedProcessor?: PDFProcessor | null): Promise<string> {
+  private async extractItemContent(item: any, sharedProcessor?: PDFProcessor | null): Promise<{ content: string; pdfExtractionFailed: boolean; pdfError: string }> {
     const parts: string[] = [];
+    let pdfExtractionFailed = false;
+    let pdfError = '';
     ztoolkit.log(`[SemanticSearch] extractItemContent() start: ${item.key}, type=${item.itemType}`);
 
     try {
@@ -1130,7 +1176,7 @@ export class SemanticSearchService {
                   try {
                     const textContent = await processor.extractText(filePath);
                     if (textContent && textContent.length > 0) {
-                      const maxFullTextLength = 50000;
+                      const maxFullTextLength = this.getMaxFullTextLength();
                       const finalContent = textContent.length > maxFullTextLength
                         ? textContent.substring(0, maxFullTextLength)
                         : textContent;
@@ -1151,13 +1197,19 @@ export class SemanticSearchService {
                 } else {
                   ztoolkit.log(`[SemanticSearch] extractItemContent() no file path for attachment ${attachmentId}`);
                 }
-              } catch (pdfError) {
+              } catch (e) {
+                pdfExtractionFailed = true;
+                pdfError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
                 ztoolkit.log(`[SemanticSearch] extractItemContent() PDF extraction failed: ${pdfError}`, 'warn');
               }
             }
 
-            // Extract text from plain text attachments
-            if (attachment.attachmentContentType === 'text/plain') {
+            // Extract text from text attachments (text/plain, text/markdown, ...
+            // but not text/html — snapshots go through the webpage path). Keeps
+            // MinerU-style imported .md files indexable (#86).
+            if (attachment.attachmentContentType &&
+                attachment.attachmentContentType.startsWith('text/') &&
+                !attachment.attachmentContentType.includes('html')) {
               try {
                 const filePath = await attachment.getFilePathAsync?.();
                 if (filePath) {
@@ -1222,8 +1274,20 @@ export class SemanticSearchService {
     }
 
     const result = parts.join('\n\n');
-    ztoolkit.log(`[SemanticSearch] extractItemContent() done: ${parts.length} parts, total ${result.length} chars`);
-    return result;
+    ztoolkit.log(`[SemanticSearch] extractItemContent() done: ${parts.length} parts, total ${result.length} chars${pdfExtractionFailed ? ' (PDF extraction FAILED)' : ''}`);
+    return { content: result, pdfExtractionFailed, pdfError };
+  }
+
+  /** Pref: extensions.zotero.zotero-mcp-plugin.semantic.maxFullTextLength (0 = unlimited, default 50000) */
+  private getMaxFullTextLength(): number {
+    try {
+      const raw = Zotero.Prefs.get('extensions.zotero.zotero-mcp-plugin.semantic.maxFullTextLength', true);
+      const n = parseInt(String(raw), 10);
+      if (Number.isFinite(n) && n >= 0) return n === 0 ? Number.MAX_SAFE_INTEGER : n;
+    } catch {
+      // fall through to default
+    }
+    return 50000;
   }
 
   /**
@@ -1283,6 +1347,30 @@ export class SemanticSearchService {
       }
     }
     return items;
+  }
+
+  /**
+   * Current change-detection timestamps for an item (#100): its own
+   * dateModified plus the newest attachment dateModified ('' when the
+   * item has no attachments)
+   */
+  private async getItemTimestamps(item: any): Promise<{ itemModified: string; attachmentModified: string }> {
+    const itemModified = item.dateModified || '';
+    let attachmentModified = '';
+    if (item.isRegularItem?.()) {
+      const attachmentIds = item.getAttachments?.() || [];
+      for (const attId of attachmentIds) {
+        try {
+          const att = await Zotero.Items.getAsync(attId);
+          if (att?.dateModified && att.dateModified > attachmentModified) {
+            attachmentModified = att.dateModified;
+          }
+        } catch (e) {
+          // Skip failed attachments
+        }
+      }
+    }
+    return { itemModified, attachmentModified };
   }
 
   /**

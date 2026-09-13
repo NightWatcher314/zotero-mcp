@@ -1,0 +1,4 @@
+{
+  "spec": ["test/**/*.test.ts"],
+  "node-option": ["experimental-strip-types", "no-warnings"]
+}

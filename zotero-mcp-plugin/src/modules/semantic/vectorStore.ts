@@ -103,14 +103,33 @@ export class VectorStore {
       // Create database connection
       this.db = new Zotero.DBConnection(this.dbPath);
 
+      // #95: WAL so bulk index writes don't hold exclusive locks on a
+      // multi-GB database (default rollback journal blocks readers and
+      // rewrites the journal on every commit)
+      try {
+        const mode = await this.db.valueQueryAsync(`PRAGMA journal_mode = WAL`);
+        await this.db.queryAsync(`PRAGMA synchronous = NORMAL`);
+        ztoolkit.log(`[VectorStore] journal_mode=${mode}`);
+      } catch (e) {
+        ztoolkit.log(`[VectorStore] Could not enable WAL: ${e}`, 'warn');
+      }
+
       // Create tables
       await this.createTables();
 
-      // Check database integrity
-      const isHealthy = await this.checkAndRepairDatabase();
-      if (!isHealthy) {
-        // Database was recreated after corruption, re-create tables
-        await this.createTables();
+      // Check database integrity — PRAGMA integrity_check scans the whole
+      // file even with a row limit, so on multi-GB stores run it at most
+      // once per week (#95). Corruption between checks is repaired at the
+      // next scheduled check.
+      const PREF_LAST_CHECK = 'extensions.zotero.zotero-mcp-plugin.semantic.lastIntegrityCheck';
+      const lastCheck = parseInt(String(Zotero.Prefs.get(PREF_LAST_CHECK, true) || '0'), 10);
+      if (Date.now() - lastCheck > 7 * 24 * 3600 * 1000) {
+        const isHealthy = await this.checkAndRepairDatabase();
+        if (!isHealthy) {
+          // Database was recreated after corruption, re-create tables
+          await this.createTables();
+        }
+        Zotero.Prefs.set(PREF_LAST_CHECK, String(Date.now()), true);
       }
 
       this.initialized = true;
@@ -787,6 +806,25 @@ export class VectorStore {
   }
 
   /**
+   * Bulk-load index_status change-detection fields for incremental build
+   * selection (#100)
+   */
+  async getIndexStatusMap(): Promise<Map<string, { contentHash: string; itemModified: string | null; attachmentModified: string | null }>> {
+    await this.ensureInitialized();
+
+    // IMPORTANT: Single-line query to avoid Zotero queryAsync bug with multi-line SQL
+    const rows = await this.db.queryAsync(`SELECT item_key, content_hash, item_modified, attachment_modified FROM index_status`);
+
+    const map = new Map<string, { contentHash: string; itemModified: string | null; attachmentModified: string | null }>();
+    if (rows && rows.length > 0) {
+      for (const r of rows) {
+        map.set(r.item_key, { contentHash: r.content_hash, itemModified: r.item_modified, attachmentModified: r.attachment_modified });
+      }
+    }
+    return map;
+  }
+
+  /**
    * Get item keys that were actually indexed (excludes 'failed:<type>'
    * markers) — for UI display, unlike getIndexedItems which the build
    * filter uses to skip both indexed and known-failed items
@@ -795,7 +833,7 @@ export class VectorStore {
     await this.ensureInitialized();
 
     // IMPORTANT: Single-line query to avoid Zotero queryAsync bug with multi-line SQL
-    const rows = await this.db.queryAsync(`SELECT item_key FROM index_status WHERE content_hash NOT LIKE 'failed:%'`);
+    const rows = await this.db.queryAsync(`SELECT item_key FROM index_status WHERE content_hash NOT LIKE ?`, ['failed:%']);
 
     if (!rows || rows.length === 0) {
       return new Set();
@@ -811,7 +849,7 @@ export class VectorStore {
     await this.ensureInitialized();
 
     // IMPORTANT: Single-line query to avoid Zotero queryAsync bug with multi-line SQL
-    const rows = await this.db.queryAsync(`SELECT item_key FROM index_status WHERE content_hash LIKE 'failed:%'`);
+    const rows = await this.db.queryAsync(`SELECT item_key FROM index_status WHERE content_hash LIKE ?`, ['failed:%']);
 
     return rows && rows.length > 0 ? rows.map((r: any) => r.item_key) : [];
   }
@@ -824,10 +862,10 @@ export class VectorStore {
 
     if (keys && keys.length > 0) {
       for (const key of keys) {
-        await this.db.queryAsync(`DELETE FROM index_status WHERE item_key = ? AND content_hash LIKE 'failed:%'`, [key]);
+        await this.db.queryAsync(`DELETE FROM index_status WHERE item_key = ? AND content_hash LIKE ?`, [key, 'failed:%']);
       }
     } else {
-      await this.db.queryAsync(`DELETE FROM index_status WHERE content_hash LIKE 'failed:%'`);
+      await this.db.queryAsync(`DELETE FROM index_status WHERE content_hash LIKE ?`, ['failed:%']);
     }
   }
 

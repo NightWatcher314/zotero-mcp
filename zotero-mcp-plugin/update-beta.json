@@ -3,12 +3,12 @@
     "zotero-mcp-plugin@autoagent.my": {
       "updates": [
         {
-          "version": "1.5.1-beta.0",
-          "update_link": "https://github.com/NightWatcher314/zotero-mcp/releases/download/v1.5.1-beta.0/zotero-mcp-plugin-1.5.1-beta.0.xpi",
+          "version": "1.6.1-beta.0",
+          "update_link": "https://github.com/NightWatcher314/zotero-mcp/releases/download/v1.6.1-beta.0/zotero-mcp-plugin-1.6.1-beta.0.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "6.999",
-              "strict_max_version": "9.*"
+              "strict_max_version": "10.99.99"
             }
           }
         }

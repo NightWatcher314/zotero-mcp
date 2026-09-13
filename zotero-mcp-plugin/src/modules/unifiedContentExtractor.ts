@@ -69,13 +69,52 @@ export class UnifiedContentExtractor {
         throw new Error(`Item with key ${itemKey} not found`);
       }
 
+      // Zotero loads item data lazily per library (only when the library is
+      // first opened in the UI). Feed/group libraries never opened this session
+      // would otherwise throw UnloadedDataException from getField()/getAttachments() (#105)
+      await Zotero.Items.loadDataTypes([item]);
+
       ztoolkit.log(`[UnifiedContentExtractor] Getting content for item ${itemKey}`);
 
       // Get effective mode and settings
       const effectiveMode = mode || MCPSettingsService.get('content.mode');
       const modeConfig = this.getModeConfiguration(effectiveMode);
-      
+
       ztoolkit.log(`[UnifiedContentExtractor] Using output mode: ${effectiveMode}`);
+
+      // Standalone note: the item itself is the note — getNotes()/getAttachments()
+      // cannot be called on note items in Zotero core, so return its content directly (#99)
+      if (item.isNote()) {
+        const noteContent = await this.extractNoteContent(item, modeConfig, effectiveMode, contentControl);
+        return {
+          itemKey,
+          title: item.getNoteTitle() || 'Untitled Note',
+          content: noteContent ? { notes: [noteContent] } : {},
+          metadata: {
+            extractedAt: new Date().toISOString(),
+            sources: noteContent ? ['notes'] : [],
+            totalLength: noteContent ? noteContent.length : 0,
+            mode: effectiveMode,
+          },
+        };
+      }
+
+      // Attachment key passed as itemKey: delegate to the single-attachment path
+      if (item.isAttachment()) {
+        const attachmentContent = await this.processAttachment(item, modeConfig, effectiveMode, contentControl);
+        return {
+          itemKey,
+          attachmentKey: item.key,
+          title: item.getDisplayTitle(),
+          content: attachmentContent ? { attachments: [attachmentContent] } : {},
+          metadata: {
+            extractedAt: new Date().toISOString(),
+            sources: attachmentContent ? ['attachments'] : [],
+            totalLength: attachmentContent ? (attachmentContent.length || 0) : 0,
+            mode: effectiveMode,
+          },
+        };
+      }
 
       // Default include all content types, but apply mode-based filtering
       const options = {
@@ -173,6 +212,8 @@ export class UnifiedContentExtractor {
       if (!attachment?.isAttachment()) {
         throw new Error(`Attachment with key ${attachmentKey} not found`);
       }
+
+      await Zotero.Items.loadDataTypes([attachment]);
 
       ztoolkit.log(`[UnifiedContentExtractor] Processing attachment: ${attachmentKey}`);
 

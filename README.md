@@ -6,7 +6,7 @@ _This README is also available in: [:cn: 简体中文](./README-zh.md) | :gb: En
 [![zotero target version](https://img.shields.io/badge/Zotero-7-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue)](https://www.typescriptlang.org)
-[![Version](https://img.shields.io/badge/Version-1.5.1-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-1.6.1-brightgreen)]()
 [![EN doc](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 [![中文文档](https://img.shields.io/badge/文档-中文-blue.svg)](README-zh.md)
 
@@ -273,9 +273,12 @@ Update metadata fields on items (title, abstract, date, DOI, creators, etc.).
 - `itemKey` (required), `fields`, `creators`
 
 #### `write_item`
-Create new items, reparent existing attachments, or import local files as attachments. The `create` action can also import downloaded PDFs/files and add the new item to collections in one call.
-- `action` (required: create/reparent/import), `itemType`, `fields`, `creators`, `tags`, `attachmentKeys`, `filePath`, `filePaths`, `collectionKeys`, `parentKey`, `parentItemKey`, `title`
-- Example create-and-attach workflow: pass `action: "create"`, bibliographic metadata in `fields`/`creators`, `filePath` or `filePaths` with absolute local paths, and optional `collectionKeys`.
+Create new items, reparent existing attachments, or import local files as attachments.
+- `action` (required: create/reparent/import), `itemType`, `fields`, `creators`, `tags`, `attachmentKeys`, `parentKey`, `filePath`, `parentItemKey`, `title`, `libraryID`
+
+#### `add_by_identifier`
+Import items by identifier (DOI, arXiv, ISBN, PMID, ADS bibcode) using Zotero's native resolvers — the same pipeline as the desktop "magic wand", including translator metadata and automatic attachment fetching.
+- `identifiers` (required), `libraryID`, `collectionKey`, `saveAttachments`, `duplicates`, `titleDuplicates`, `dryRun`, `async`, `jobID`
 
 ---
 
@@ -300,3 +303,7 @@ This project is licensed under the [MIT License](./LICENSE).
 -   [![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-square&logo=github)](https://github.com/windingwind/zotero-plugin-template)
 Contact us 
 ![Contact us](./IMG/0320.jpg)
+
+### Fork attachment import
+
+`write_item` supports `action: "create"` with `filePath` or `filePaths` (absolute local file paths) and optional `collectionKeys`, creating metadata, importing attachments, and adding the item to collections in one call. Existing fork update URLs remain unchanged.
