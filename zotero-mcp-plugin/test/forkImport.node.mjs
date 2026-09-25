@@ -71,3 +71,44 @@ test('attachment failure flushes notification for the already-created item', asy
   assert.match(result.error, /import failed/);
   assert.equal(f.commits[0], f.saved[0].notifierQueue);
 });
+
+for (const linkMode of [undefined, 'linked_file']) {
+  test(`import selects ${linkMode || 'imported_file'} without changing create behavior`, async () => {
+    const f = fixture();
+    const links = [];
+    Zotero.Items = { getByLibraryAndKeyAsync: async () => ({ id: 42, libraryID: 1, isRegularItem: () => true }) };
+    Zotero.Attachments.linkFromFile = async options => {
+      links.push(options);
+      return { key: 'LINK', getField: () => options.title };
+    };
+    const result = await f.server.callWriteItem({ action: 'import', parentItemKey: 'PARENT', filePath: '/tmp/a.md', linkMode });
+    assert.equal(result.success, true);
+    assert.equal(result.data.linkMode, linkMode || 'imported_file');
+    assert.equal(links.length, linkMode ? 1 : 0);
+    assert.equal(f.imports.length, linkMode ? 0 : 1);
+  });
+}
+
+test('linked_file rejects group-library parents before attaching', async () => {
+  const f = fixture();
+  Zotero.Items = { getByLibraryAndKeyAsync: async () => ({ id: 42, libraryID: 2, isRegularItem: () => true }) };
+  const result = await f.server.callWriteItem({ action: 'import', parentItemKey: 'PARENT', filePath: '/tmp/a.md', linkMode: 'linked_file' });
+  assert.equal(result.success, false);
+  assert.match(result.error, /only supported in the personal library/);
+  assert.equal(f.imports.length, 0);
+});
+
+for (const [enabled, args, message] of [
+  [false, { itemKeys: ['PARENT'] }, /Write operations are currently disabled/],
+  [true, { itemKeys: ['PARENT'], permanent: true }, /permanent option is not supported/],
+]) {
+  test(`trash_item gate: ${message.source}`, async () => {
+    const f = fixture();
+    Zotero.Prefs = { get: () => enabled };
+    let called = false;
+    f.server.callTrashItems = async () => { called = true; };
+    const result = await f.server.handleToolCall({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'trash_item', arguments: args } });
+    assert.match(JSON.stringify(result), message);
+    assert.equal(called, false);
+  });
+}

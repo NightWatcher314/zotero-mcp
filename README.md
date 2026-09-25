@@ -6,7 +6,7 @@ _This README is also available in: [:cn: 简体中文](./README-zh.md) | :gb: En
 [![zotero target version](https://img.shields.io/badge/Zotero-7-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue)](https://www.typescriptlang.org)
-[![Version](https://img.shields.io/badge/Version-1.6.1-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-1.6.2-brightgreen)]()
 [![EN doc](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 [![中文文档](https://img.shields.io/badge/文档-中文-blue.svg)](README-zh.md)
 
@@ -196,7 +196,7 @@ Here are some screenshots demonstrating the functionality of Zotero MCP:
 
 ## 🔧 API Reference (MCP Tools)
 
-The integrated MCP server provides **20 tools** in 5 categories:
+The integrated MCP server provides **29 tools** in 5 categories:
 
 ### 1. Search & Query (7 tools)
 
@@ -258,7 +258,7 @@ Get semantic search service status and index statistics. No parameters required.
 Access cached full-text content database (read-only).
 - `action` (required: list/search/get/stats), `query`, `itemKeys`, `limit`
 
-### 5. Write Operations (4 tools, can be disabled in preferences)
+### 5. Write Operations (6 tools, can be disabled in preferences)
 
 #### `write_note`
 Create or modify Zotero notes. Supports Markdown auto-conversion to HTML.
@@ -274,11 +274,15 @@ Update metadata fields on items (title, abstract, date, DOI, creators, etc.).
 
 #### `write_item`
 Create new items, reparent existing attachments, or import local files as attachments.
-- `action` (required: create/reparent/import), `itemType`, `fields`, `creators`, `tags`, `attachmentKeys`, `parentKey`, `filePath`, `parentItemKey`, `title`, `libraryID`
+- `action` (required: create/reparent/import), `itemType`, `fields`, `creators`, `tags`, `attachmentKeys`, `parentKey`, `filePath`, `parentItemKey`, `title`, `linkMode` (import: `imported_file` copies into Zotero storage, `linked_file` links in place — personal library only), `libraryID`
 
 #### `add_by_identifier`
 Import items by identifier (DOI, arXiv, ISBN, PMID, ADS bibcode) using Zotero's native resolvers — the same pipeline as the desktop "magic wand", including translator metadata and automatic attachment fetching.
 - `identifiers` (required), `libraryID`, `collectionKey`, `saveAttachments`, `duplicates`, `titleDuplicates`, `dryRun`, `async`, `jobID`
+
+#### `trash_item`
+Move one or more items to Zotero Trash. Items stay recoverable until the user empties Trash; permanent deletion is not supported (`permanent` is rejected).
+- `itemKeys` (required, array of item keys; deduplicated), `libraryID`
 
 ---
 

@@ -13,6 +13,7 @@ import {
   handleCreateCollection,
   handleUpdateCollection,
   handleDeleteCollection,
+  handleTrashItems,
   handleAddItemsToCollection,
   handleRemoveItemsFromCollection,
 } from './apiHandlers';
@@ -721,6 +722,26 @@ export class StreamableMCPServer {
         },
       },
       {
+        name: 'trash_item',
+        description: 'Move one or more items to Zotero Trash. Items remain recoverable until the user empties Trash; permanent deletion is not supported.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            libraryID: {
+              type: 'number',
+              description: 'Optional target Zotero library ID. Defaults to the user library when omitted.'
+            },
+            itemKeys: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              description: 'Item keys to move to Trash, e.g. ["ABCD1234"]'
+            },
+          },
+          required: ['itemKeys'],
+        },
+      },
+      {
         name: 'add_items_to_collection',
         description: 'Add one or more items to a collection by their item keys.',
         inputSchema: {
@@ -1077,6 +1098,11 @@ export class StreamableMCPServer {
             title: {
               type: 'string',
               description: 'For import action: display title for the attachment (defaults to the file name)'
+            },
+            linkMode: {
+              type: 'string',
+              enum: ['imported_file', 'linked_file'],
+              description: 'For import action: imported_file (default) copies the file into Zotero storage; linked_file links to the file in place without copying (personal library only; if a Linked Attachment Base Directory is configured, the path is stored relative to it)'
             }
           },
           required: ['action']
@@ -1150,6 +1176,7 @@ export class StreamableMCPServer {
     const writeEnabled = Zotero.Prefs.get('extensions.zotero.zotero-mcp-plugin.write.enabled', true);
     const writeToolNames = new Set([
       'write_note', 'write_tag', 'write_metadata', 'write_item', 'add_by_identifier',
+      'trash_item',
     ]);
     const finalTools = writeEnabled === true
       ? filteredTools
@@ -1259,6 +1286,24 @@ export class StreamableMCPServer {
             throw new Error('collectionKey is required');
           }
           result = await runSerializedWrite(() => this.callUpdateCollection(args));
+          break;
+        }
+
+        case 'trash_item': {
+          const writeEnabledTI = Zotero.Prefs.get('extensions.zotero.zotero-mcp-plugin.write.enabled', true);
+          if (writeEnabledTI !== true) {
+            throw new Error('Write operations are currently disabled. Please go to Zotero → Tools → Add-ons → Zotero MCP Plugin → Preferences, and enable "Write Operations" to use this feature.');
+          }
+          if (args && Object.prototype.hasOwnProperty.call(args, 'permanent')) {
+            throw new Error('The permanent option is not supported. Items can only be moved to Zotero Trash.');
+          }
+          const itemKeys = this.coerceStringArray(args?.itemKeys);
+          if (!itemKeys || itemKeys.length === 0) {
+            throw new Error(`itemKeys array is required, e.g. ["ABCD1234"]. Received: ${JSON.stringify(args?.itemKeys)}`);
+          }
+          result = await runSerializedWrite(() =>
+            this.callTrashItems({ ...args, itemKeys }),
+          );
           break;
         }
 
@@ -1706,6 +1751,11 @@ export class StreamableMCPServer {
   private async callUpdateCollection(args: any): Promise<any> {
     const { collectionKey, ...body } = args;
     const response = await handleUpdateCollection({ 1: collectionKey }, body);
+    return response.body ? JSON.parse(response.body) : response;
+  }
+
+  private async callTrashItems(args: any): Promise<any> {
+    const response = await handleTrashItems({}, args);
     return response.body ? JSON.parse(response.body) : response;
   }
 
@@ -2454,7 +2504,7 @@ export class StreamableMCPServer {
    * Handle write_item tool calls: create items, reparent attachments, and import files
    */
   private async callWriteItem(args: any): Promise<any> {
-    const { action, itemType, fields, creators, tags, attachmentKeys, parentKey, filePath, filePaths, collectionKeys, parentItemKey, title, libraryID = Zotero.Libraries.userLibraryID } = args;
+    const { action, itemType, fields, creators, tags, attachmentKeys, parentKey, filePath, filePaths, collectionKeys, parentItemKey, title, linkMode, libraryID = Zotero.Libraries.userLibraryID } = args;
 
     try {
       switch (action) {
@@ -2688,17 +2738,31 @@ export class StreamableMCPServer {
             throw new Error(`Parent ${importParentKey} is not a regular item (type: ${parentItem.itemType}), cannot attach files`);
           }
 
-          // Import file as attachment
+          const effectiveLinkMode = linkMode || 'imported_file';
+          if (effectiveLinkMode !== 'imported_file' && effectiveLinkMode !== 'linked_file') {
+            throw new Error(`Invalid linkMode: ${linkMode}. Use imported_file (copy into Zotero storage) or linked_file (link in place).`);
+          }
+          if (effectiveLinkMode === 'linked_file' && parentItem.libraryID !== Zotero.Libraries.userLibraryID) {
+            // Zotero core rejects linked files outside the personal library;
+            // check the resolved parent's library, matching core's constraint
+            throw new Error('linked_file attachments are only supported in the personal library (Zotero limitation); use imported_file for group libraries');
+          }
+
+          // Import or link file as attachment (#93: linked_file keeps the
+          // file in place instead of copying it into Zotero storage)
           const notifierQueue = createNotifierQueue();
-          const attachment = await Zotero.Attachments.importFromFile({
+          const attachmentOptions = {
             file: filePath,
             parentItemID: parentItem.id,
             title: title || filePath.split(/[\\/]/).pop() || 'Imported Attachment',
             saveOptions: notifierSaveOptions(notifierQueue)
-          });
+          };
+          const attachment = effectiveLinkMode === 'linked_file'
+            ? await Zotero.Attachments.linkFromFile(attachmentOptions)
+            : await Zotero.Attachments.importFromFile(attachmentOptions);
           const notification = await commitNotifierQueue(notifierQueue, `import attachment ${attachment.key}`);
 
-          ztoolkit.log(`[StreamableMCP] Imported file as attachment ${attachment.key} under ${importParentKey}`);
+          ztoolkit.log(`[StreamableMCP] ${effectiveLinkMode === 'linked_file' ? 'Linked' : 'Imported'} file as attachment ${attachment.key} under ${importParentKey}`);
 
           return {
             action: 'import',
@@ -2707,12 +2771,13 @@ export class StreamableMCPServer {
               attachmentKey: attachment.key,
               parentItemKey: importParentKey,
               filePath,
+              linkMode: effectiveLinkMode,
               title: attachment.getField('title')
             },
             metadata: {
               extractedAt: new Date().toISOString(),
               notificationStatus: notification.status,
-              message: `File imported as attachment (key: ${attachment.key}) under parent ${importParentKey}`
+              message: `File ${effectiveLinkMode === 'linked_file' ? 'linked' : 'imported'} as attachment (key: ${attachment.key}) under parent ${importParentKey}`
             }
           };
         }
@@ -3323,7 +3388,8 @@ export class StreamableMCPServer {
         'write_tag',
         'write_metadata',
         'write_item',
-        'add_by_identifier'
+        'add_by_identifier',
+        'trash_item'
       ],
       transport: {
         type: "streamable-http",

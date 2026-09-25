@@ -67,6 +67,25 @@ Verify that the XPI manifest, package version, update link, and supported Zotero
 version range agree. Do not publish `update-beta.json` unless its referenced beta
 XPI also exists. Compare downloaded release asset hashes with the built files.
 
+### Fork preservation and upstream sync
+
+The maintained release branch is `feature/ai-import-attachments`; `main` is not
+our release baseline. Fetch upstream branches without importing all tags: fork
+versions may later collide with upstream version names.
+
+Upstream provides item creation and attachment import, but does not cover our
+single-call `create` with `filePaths` and `collectionKeys`. Keep that adapter and
+its Node tests when merging `callWriteItem`, including upstream's `linkMode`
+parameter. `linked_file` applies to `import` and is restricted to personal
+libraries; default imports still copy files into Zotero storage.
+
+Keep fork release/update URLs and addon ID unchanged. Before publishing, run
+`npm run test:unit` (HTTP framing, fork imports, linked-file selection and write
+permission guards) and `npm run build`. After installation, verify multiple
+attachments and collection membership, linked-file behavior, permanent-delete
+rejection, and trash cleanup using temporary items. A successful build does not
+verify the installed plugin.
+
 ### 3. Update URL Resolution
 - Plugin checks: `https://github.com/NightWatcher314/zotero-mcp/releases/latest/download/update.json`
 - GitHub redirects `latest` to the most recent release

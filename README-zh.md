@@ -6,7 +6,7 @@ _This README is also available in: [:gb: English](./README.md) | :cn: 简体中�
 [![zotero target version](https://img.shields.io/badge/Zotero-7-green?style=flat-square&logo=zotero&logoColor=CC2936)](https://www.zotero.org)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue)](https://www.typescriptlang.org)
-[![Version](https://img.shields.io/badge/Version-1.6.1-brightgreen)]()
+[![Version](https://img.shields.io/badge/Version-1.6.2-brightgreen)]()
 [![EN doc](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 [![中文文档](https://img.shields.io/badge/文档-中文-blue.svg)](README-zh.md)
 
@@ -312,7 +312,7 @@ MCP 服务器已集成在插件内，位于 `src/modules/streamableMCPServer.ts`
 
 ## 🔧 API 参考（MCP 工具列表）
 
-插件集成的 MCP 服务器提供以下 **20 个工具**，分为 5 大类：
+插件集成的 MCP 服务器提供以下 **29 个工具**，分为 5 大类：
 
 ### 一、搜索与查询（7 个）
 
@@ -420,7 +420,7 @@ MCP 服务器已集成在插件内，位于 `src/modules/streamableMCPServer.ts`
 | `itemKeys` | string[] | 指定条目（get 操作） |
 | `limit` | number | 最大结果数 |
 
-### 五、写入操作（4 个，可在偏好设置中禁用）
+### 五、写入操作（6 个，可在偏好设置中禁用）
 
 #### `write_note`
 创建或修改 Zotero 笔记，支持 Markdown 自动转换为 HTML。
@@ -466,6 +466,7 @@ MCP 服务器已集成在插件内，位于 `src/modules/streamableMCPServer.ts`
 | `filePath` | string | import 操作：要导入文件的本地绝对路径 |
 | `parentItemKey` | string | import 操作：目标父条目 Key |
 | `title` | string | import 操作：附件显示标题（默认为文件名） |
+| `linkMode` | string | import 操作：`imported_file`（默认，复制进 Zotero 存储）或 `linked_file`（链接原文件不复制；仅限个人文库，若设置了链接附件根目录则按相对路径存储） |
 
 #### `add_by_identifier`
 通过标识符导入文献（DOI、arXiv、ISBN、PMID、ADS bibcode），走 Zotero 原生解析管线（与桌面端"魔杖"相同），自动获取 translator 元数据和附件。
@@ -479,6 +480,14 @@ MCP 服务器已集成在插件内，位于 `src/modules/streamableMCPServer.ts`
 | `duplicates` / `titleDuplicates` | string | 重复处理策略（flag/skip/off） |
 | `dryRun` | boolean | 仅解析标识符不导入 |
 | `async` / `jobID` | - | 大批量后台任务与轮询 |
+
+#### `trash_item`
+将一个或多个条目移入 Zotero 回收站。条目可在回收站中恢复，直到用户清空回收站；不支持永久删除（传入 `permanent` 会被拒绝）。
+
+| 参数 | 类型 | 描述 |
+|---|---|---|
+| `itemKeys` | string[] | **必需**，要移入回收站的条目 Key 列表（自动去重） |
+| `libraryID` | number | 目标文库（默认个人文库） |
 
 ---
 
